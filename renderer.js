@@ -1,0 +1,23 @@
+const $=id=>document.getElementById(id);let cfg={};let toastTimer;
+function toast(m,bad=false){const t=$("toast");t.textContent=m;t.classList.remove("hidden","bad");if(bad)t.classList.add("bad");clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.add("hidden"),4500);}
+function log(m){$("log").textContent="["+new Date().toLocaleTimeString()+"] "+m+"\n"+$("log").textContent;}
+function result(r){toast(r.output|| (r.ok?"Done":"Operation failed"),!r.ok);log(r.output||"Done");return r;}
+function page(n){document.querySelectorAll(".page").forEach(p=>p.classList.add("hidden"));$("page-"+n).classList.remove("hidden");document.querySelectorAll(".nav").forEach(b=>b.classList.toggle("active",b.dataset.page===n));$("title").textContent=({home:"Gaming dashboard",instances:"Instance manager",controls:"Game controls",tools:"Game tools",settings:"Settings"})[n];}
+document.querySelectorAll(".nav").forEach(b=>b.onclick=()=>page(b.dataset.page));document.querySelectorAll("[data-go]").forEach(b=>b.onclick=()=>page(b.dataset.go));
+$("go-start").onclick=()=>page("instances");$("go-apk").onclick=()=>install();$("apk").onclick=()=>install();
+$("reload").onclick=loadAvds;$("refresh").onclick=refresh;$("start").onclick=start;$("stop").onclick=async()=>result(await window.neon.stop());$("clear").onclick=()=>$("log").textContent="Log cleared.";
+$("tap").onclick=async()=>result(await window.neon.tap({x:$("tx").value,y:$("ty").value}));
+$("swipe").onclick=async()=>{const a=$("from").value.split(",").map(Number),b=$("to").value.split(",").map(Number);if(a.length!==2||b.length!==2||[...a,...b].some(n=>!Number.isFinite(n)))return toast("Use coordinates like 640,500",true);result(await window.neon.swipe({x1:a[0],y1:a[1],x2:b[0],y2:b[1],duration:250}));};
+document.querySelectorAll("[data-adb]").forEach(b=>b.onclick=async()=>result(await window.neon.adb(b.dataset.adb)));
+$("devices").onclick=async()=>{const r=await window.neon.adb("devices");$("devices-out").textContent=r.output;result(r);};
+$("version").onclick=async()=>{const r=await window.neon.adb("version");$("info").textContent="Android version: "+r.output;result(r);};
+$("screen").onclick=async()=>{const r=await window.neon.adb("screen");$("info").textContent="Display size: "+r.output;result(r);};
+$("pickemu").onclick=async()=>{const p=await window.neon.pick("emulator");if(p)$("emupath").value=p;};$("pickadb").onclick=async()=>{const p=await window.neon.pick("adb");if(p)$("adbpath").value=p;};
+$("save").onclick=async()=>{cfg={...cfg,emulatorPath:$("emupath").value,adbPath:$("adbpath").value,avdName:$("avd").value,ramMb:+$("ram").value,cores:+$("cores").value,gpu:$("gpu").value};await window.neon.saveConfig(cfg);toast("Settings saved");};
+$("docs").onclick=()=>window.neon.external("https://developer.android.com/studio/run/managing-avds");
+window.neon.onLog(log);
+async function loadAvds(){const r=await window.neon.avds(),s=$("avd");s.innerHTML="";if(r.ok&&r.avds.length){r.avds.forEach(n=>{const o=document.createElement("option");o.value=n;o.textContent=n;s.appendChild(o);});if(cfg.avdName&&r.avds.includes(cfg.avdName))s.value=cfg.avdName;$("avd-state").textContent=r.avds.length+" found";$("avd-detail").textContent=r.avds.join(", ");$("sdk-status").textContent="Android tools detected";}else{const o=document.createElement("option");o.value="";o.textContent="No AVD found — install Android SDK";s.appendChild(o);$("avd-state").textContent="None found";$("avd-detail").textContent=r.output||"Set executable paths in Settings";$("sdk-status").textContent="Setup required";}}
+async function refresh(){const r=await window.neon.adb("devices");$("adb-state").textContent=r.ok?"ADB responding":"ADB unavailable";$("adb-detail").textContent=r.output||"No details";await loadAvds();}
+async function start(){if(!$("avd").value)return toast("Create an AVD first. See Settings for the setup guide.",true);cfg={...cfg,avdName:$("avd").value,ramMb:+$("ram").value,cores:+$("cores").value,gpu:$("gpu").value};await window.neon.saveConfig(cfg);$("start").disabled=true;$("start").textContent="Starting…";log("Starting "+cfg.avdName+"; first boot can take several minutes.");try{result(await window.neon.start(cfg));}catch(e){toast(e.message,true);log(e.message);}finally{$("start").disabled=false;$("start").textContent="▶ Start selected device";}}
+async function install(){const f=await window.neon.pick("apk");if(f){log("Installing APK: "+f);result(await window.neon.install(f));}}
+(async()=>{cfg=await window.neon.getConfig();$("emupath").value=cfg.emulatorPath||"";$("adbpath").value=cfg.adbPath||"";$("ram").value=String(cfg.ramMb||3072);$("cores").value=String(cfg.cores||2);$("gpu").value=cfg.gpu||"auto";await loadAvds();await refresh();})().catch(e=>toast(e.message,true));
